@@ -1,0 +1,4 @@
+{
+  "database": "mongodb+srv://carypark:carypark-cred@cluster0.via31.mongodb.net/myFirstDatabase?retryWrites=true&w=majority",
+  "token_secret": "token-secret !!"
+}
