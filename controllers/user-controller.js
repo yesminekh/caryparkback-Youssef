@@ -50,7 +50,7 @@ console.log("picture")
             expiresIn: "60000", // in Milliseconds (3600000 = 1 hour)
         });
 
-        //sendConfirmationEmail(email, token);
+       // sendConfirmationEmail(email, token);
         res.status(201).send({ message: "success", user: newUser, "token": token });
     }
 };

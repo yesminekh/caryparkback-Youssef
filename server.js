@@ -8,6 +8,21 @@ const config = require("./config.json");
 const bodyParser = require("body-parser");
 const path = require("path");
 const cors = require("cors")
+const { Client, Environment } = require("square");
+const crypto = require('crypto');
+
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+
+// Initialized the Square Api client:
+//   Set environment
+//   Set access token
+const defaultClient = new Client({
+  environment: process.env.ENVIRONMENT === "PRODUCTION" ? Environment.Production : Environment.Sandbox,
+  accessToken: process.env.ACCESS_TOKEN,
+});
+
+const { paymentsApi, ordersApi, locationsApi, customersApi } = defaultClient;
 
 app.use(express.static('public'));  
 app.use('/img', express.static('uploads/images'));
@@ -74,121 +89,165 @@ app.use("/api/user", userRoute);
 app.use("/api/parking", parkingRoute);
 app.use("/api/reservation", reservationRoute);
 
-if (process.env.NODE_ENV === "production") {
-    console.log("app in production mode");
-    app.use(express.static("client/build"));
-    app.get("/*", function (req, res) {
-        res.sendFile(
-            path.join(__dir, "client", "build", "index.html"),
-            function (err) {
-                if (err) res.status(500).send(err);
-            }
-        );
-    });
-}
-app.get('/initializeBraintree', async (req, res) =>  {
-  const gateway = new braintree.BraintreeGateway({
-    environment: braintree.Environment.Sandbox,
-    merchantId: "mf8fy8t5g2njfq6c",
-    publicKey: "z4ggmqdhxbm6mbzm",
-    privateKey: "acc246c8d562daff24dca1a24b65c216"
-  });
-  let token = (await gateway.clientToken.generate({})).clientToken;
-  res.send({data: token});
+app.post('/chargeForCookie', async (request, response) => {
+  const requestBody = request.body;
+  try {
+    const locationId =  process.env.LOCATION_ID;
+    const createOrderRequest = getOrderRequest(locationId);
+    const createOrderResponse = await ordersApi.createOrder(createOrderRequest);
+
+    const createPaymentRequest = {
+      idempotencyKey: crypto.randomBytes(12).toString('hex'),
+      sourceId: requestBody.nonce,
+      amountMoney: {
+        ...createOrderResponse.result.order.totalMoney,
+      },
+      orderId: createOrderResponse.result.order.id,
+      autocomplete: true,
+      locationId,
+    };
+    const createPaymentResponse = await paymentsApi.createPayment(createPaymentRequest);
+    console.log(createPaymentResponse.result.payment);
+
+    response.status(200).json(createPaymentResponse.result.payment);
+  } catch (e) {
+    console.log(
+      `[Error] Status:${e.statusCode}, Messages: ${JSON.stringify(e.errors, null, 2)}`);
+
+    sendErrorMessage(e.errors, response);
+  }
 });
 
-app.post('/confirmBraintree', async (req, res) =>  {
-  const data = req.body;
-  const gateway = new braintree.BraintreeGateway({
-    environment: braintree.Environment.Sandbox,
-    merchantId: "mf8fy8t5g2njfq6c",
-    publicKey: "z4ggmqdhxbm6mbzm",
-    privateKey: "acc246c8d562daff24dca1a24b65c216"
-  });
-  let transactionResponse = await gateway.transaction.sale({
-      amount: data.amount,
-      paymentMethodNonce: data.nonce,
-      options: {
-          submitForSettlement: true
+app.post('/chargeCustomerCard', async (request, response) => {
+  const requestBody = request.body;
+
+  try {
+    const listLocationsResponse = await locationsApi.listLocations();
+    const locationId = process.env.LOCATION_ID;
+    const createOrderRequest = getOrderRequest(locationId);
+    const createOrderResponse = await ordersApi.createOrder(createOrderRequest);
+    const createPaymentRequest = {
+      idempotencyKey: crypto.randomBytes(12).toString('hex'),
+      customerId: requestBody.customer_id,
+      sourceId: requestBody.customer_card_id,
+      amountMoney: {
+        ...createOrderResponse.result.order.totalMoney,
+      },
+      orderId: createOrderResponse.result.order.id
+    };
+    const createPaymentResponse = await paymentsApi.createPayment(createPaymentRequest);
+    console.log(createPaymentResponse.result.payment);
+
+    response.status(200).json(createPaymentResponse.result.payment);
+  } catch (e) {
+    console.log(
+      `[Error] Status:${e.statusCode}, Messages: ${JSON.stringify(e.errors, null, 2)}`);
+
+    sendErrorMessage(e.errors, response);
+  }
+});
+
+app.post('/createCustomerCard', async (request, response) => {
+  const requestBody = request.body;
+  console.log(requestBody);
+  try {
+    const createCustomerCardRequestBody = {
+      cardNonce: requestBody.nonce
+    };
+    const customerCardResponse = await customersApi.createCustomerCard(requestBody.customer_id, createCustomerCardRequestBody);
+    console.log(customerCardResponse.result.card);
+
+    response.status(200).json(customerCardResponse.result.card);
+  } catch (e) {
+    console.log(
+      `[Error] Status:${e.statusCode}, Messages: ${JSON.stringify(e.errors, null, 2)}`);
+
+    sendErrorMessage(e.errors, response);
+  }
+});
+
+function getOrderRequest(locationId) {
+  return {
+    idempotencyKey: crypto.randomBytes(12).toString('hex'),
+    order: {
+      locationId: locationId,
+      lineItems: [
+        {
+          name: "Cookie 🍪",
+          quantity: "1",
+          basePriceMoney: {
+            amount: 100,
+            currency: "USD"
+          }
         }
-  });
-  
-  console.log(transactionResponse);
-  res.send({data: transactionResponse});
+      ]
+    }
+  }
+}
+
+function sendErrorMessage(errors, response) {
+  switch (errors[0].code) {
+    case "UNAUTHORIZED":
+      response.status(401).send({
+          errorMessage: "Server Not Authorized. Please check your server permission."
+      });
+      break;
+    case "GENERIC_DECLINE":
+      response.status(400).send({
+          errorMessage: "Card declined. Please re-enter card information."
+      });
+      break;
+    case "CVV_FAILURE":
+      response.status(400).send({
+          errorMessage: "Invalid CVV. Please re-enter card information."
+      });
+      break;
+    case "ADDRESS_VERIFICATION_FAILURE":
+      response.status(400).send({
+          errorMessage: "Invalid Postal Code. Please re-enter card information."
+      });
+      break;
+    case "EXPIRATION_FAILURE":
+      response.status(400).send({
+          errorMessage: "Invalid expiration date. Please re-enter card information."
+      });
+      break;
+    case "INSUFFICIENT_FUNDS":
+      response.status(400).send({
+          errorMessage: "Insufficient funds; Please try re-entering card details."
+      });
+      break;
+    case "CARD_NOT_SUPPORTED":
+      response.status(400).send({
+          errorMessage: "	The card is not supported either in the geographic region or by the MCC; Please try re-entering card details."
+      });
+      break;
+    case "PAYMENT_LIMIT_EXCEEDED":
+      response.status(400).send({
+          errorMessage: "Processing limit for this merchant; Please try re-entering card details."
+      });
+      break;
+    case "TEMPORARY_ERROR":
+      response.status(500).send({
+          errorMessage: "Unknown temporary error; please try again;"
+      });
+      break;
+    default:
+      response.status(400).send({
+          errorMessage: "Payment error. Please contact support if issue persists."
+      });
+      break;
+  }
+}
+
+// listen for requests :)
+const listener = app.listen(process.env.PORT, function () {
+  console.log('Your app is listening on port ' + listener.address().port);
 });
-app.get('/pay', (req, res) => {
 
 
+ 
 
-  var create_payment_json = {
  
-     
-     
-     "intent": "sale",
-     "payer": {
-         "payment_method": "paypal"
-     },
-     "redirect_urls": {
-         "return_url": "http://localhost:3000/success",
-         "cancel_url": "http://localhost:3000/cancel"
-     },
-     "transactions": [{
-         "item_list": {
-             "items": [{
-                 "name": "Red Sox Hat",
-                 "sku": "001",
-                 "price": '25.00' ,
-                 "currency": "USD",
-                 "quantity": 1
-             }]
-         },
-         "amount": {
-             "currency": "USD",
-             "total": "25.00"
-         },
-         "description": "Hat for the best team ever"
-     }]
- };
- 
- paypal.payment.create(create_payment_json, function (error, payment) {
-   if (error) {
-       throw error;
-   } else {
-       for(let i = 0;i < payment.links.length;i++){
-         if(payment.links[i].rel === 'approval_url'){
-           res.redirect(payment.links[i].href);
-         }
-       }
-   }
- });
- 
- });
- 
- app.get('/success', (req, res) => {
-   const payerId = req.query.PayerID;
-   const paymentId = req.query.paymentId;
- 
-   const execute_payment_json = {
-     "payer_id": payerId,
-     "transactions": [{
-         "amount": {
-             "currency": "USD",
-             "total": "25.00"
-         }
-     }]
-   };
- 
-   paypal.payment.execute(paymentId, execute_payment_json, function (error, payment) {
-     if (error) {
-         console.log(error.response);
-         throw error;
-     } else {
-         console.log(JSON.stringify(payment));
-         res.send('Success');
-     }
- });
- });
- 
- app.get('/cancel', (req, res) => res.send('Cancelled'));
 
 app.listen(port, () => console.log(`Server up and running on port ${port} !`));

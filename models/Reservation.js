@@ -2,8 +2,8 @@ const mongoose = require("mongoose");
 
 const ReservationSchema = new mongoose.Schema(
     {
-        dateEntre: { type: Date },
-        dateSortie: { type: Date },
+        dateEntre: { type: String },
+        dateSortie: { type: String },
         disabledPark: { type: Boolean },
         specialGuard: { type: Boolean },
 

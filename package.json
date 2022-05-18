@@ -31,6 +31,7 @@
     "multer-gridfs-storage": "^5.0.2",
     "nodemailer": "^6.7.0",
     "nodemon": "^2.0.15",
+    "square": "^19.0.0",
     "swagger-jsdoc": "^6.1.0",
     "swagger-ui-express": "^4.2.0"
   }

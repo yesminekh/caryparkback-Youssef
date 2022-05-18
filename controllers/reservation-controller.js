@@ -80,15 +80,15 @@ exports.getReservationById = async (req, res) => {
 }
 
 exports.addReservation = async (req, res) => {
-    const { dateEntre, dateSortie, parking, user, userFromPark } = req.body;
+    const { dateEntre, dateSortie, parking, user, userFromPark,disabledPark,specialGuard } = req.body;
     console.log(req.body)
 
     const newReservation = new Reservation();
 
     newReservation.dateEntre = dateEntre;
     newReservation.dateSortie = dateSortie;
-    
-
+    newReservation.disabledPark=disabledPark
+    newReservation.specialGuard=specialGuard
     newReservation.parking = parking;
     newReservation.user = user;
     newReservation.userFromPark = userFromPark
