@@ -1,4 +1,4 @@
-const Parking = require("../models/Parking");
+const Parking = require("../models/parking");
 const Reservation = require("../models/Reservation");
 const User = require("../models/User");
 
