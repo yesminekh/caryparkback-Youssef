@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-let Parking = require("../models/parking")
+let Parking = require("../models/Parking")
 
 const ParkingController = require("../controllers/parking-controller");
 

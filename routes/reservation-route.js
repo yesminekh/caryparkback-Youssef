@@ -4,7 +4,7 @@ const User = require("../models/User");
 const router = express.Router();
 const Reservation = require("../models/Reservation");
 const ReservationController = require("../controllers/reservation-controller");
-const Parking = require("../models/parking");
+let Parking = require("../models/Parking")
 
 /**
 * @swagger

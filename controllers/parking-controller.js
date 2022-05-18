@@ -1,4 +1,4 @@
-let Parking = require("../models/parking")
+let Parking = require("../models/Parking")
 const User = require("../models/User")
 
 exports.getParkings = async (req, res) => {
