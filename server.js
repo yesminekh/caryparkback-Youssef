@@ -250,4 +250,4 @@ function sendErrorMessage(errors, response) {
 
  
 
-app.listen(port, () => console.log(`Server up and running on port ${port} !`));
+app.listen(port, () => console.log(`Server up and running on portt ${port} !`));
